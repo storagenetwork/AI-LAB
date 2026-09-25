@@ -1,3 +1,8 @@
 name = "ho-ai-lab"
 main = "src/index.js"
 compatibility_date = "2026-09-25"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hoailabdb"
+database_id = "99f13c40-dd3b-4fda-a145-b3e5823c5cb0"
