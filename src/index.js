@@ -4,7 +4,6 @@ export default {
 
     if (url.pathname === "/") {
       return new Response("HO AI LAB ONLINE", {
-        status: 200,
         headers: {
           "content-type": "text/plain; charset=UTF-8"
         }
@@ -15,13 +14,13 @@ export default {
       return Response.json({
         status: "ok",
         service: "ho-ai-lab",
-        version: "0.2.0"
+        version: "0.3.0"
       });
     }
 
     if (url.pathname === "/db-health") {
       try {
-        const result = await env["ho-ai-lab-db"]
+        const result = await env.DB
           .prepare("SELECT 1 AS ok")
           .first();
 
