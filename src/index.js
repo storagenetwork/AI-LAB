@@ -3,11 +3,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/") {
-      return new Response("HO AI LAB ONLINE", {
-        headers: {
-          "content-type": "text/plain; charset=UTF-8"
-        }
-      });
+      return new Response("HO AI LAB ONLINE");
     }
 
     if (url.pathname === "/health") {
@@ -20,7 +16,7 @@ export default {
 
     if (url.pathname === "/db-health") {
       try {
-        const result = await env.DB
+        const result = await env["ho-ai-lab-db"]
           .prepare("SELECT 1 AS ok")
           .first();
 
