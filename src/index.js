@@ -172,3 +172,38 @@ if (url.pathname === "/api/v1/tasks" && request.method === "POST") {
     return new Response("Not Found", { status: 404 });
   }
 };
+// TASK QUEUE — LIST
+if (url.pathname === "/api/v1/tasks" && request.method === "GET") {
+  const result = await env.DB.prepare(`
+    SELECT
+      t.id,
+      t.task_key,
+      t.task_type,
+      t.priority,
+      t.status,
+      t.attempts,
+      t.max_attempts,
+      t.scheduled_at,
+      t.created_at,
+      a.agent_key,
+      a.name AS agent_name
+    FROM tasks t
+    LEFT JOIN agents a
+      ON a.id = t.agent_id
+    ORDER BY
+      CASE t.status
+        WHEN 'running' THEN 1
+        WHEN 'queued' THEN 2
+        WHEN 'paused' THEN 3
+        WHEN 'completed' THEN 4
+        ELSE 5
+      END,
+      t.priority,
+      t.id
+  `).all();
+
+  return Response.json({
+    status: "ok",
+    tasks: result.results || []
+  });
+}
