@@ -90,6 +90,84 @@ export default {
         agents: result.results || []
       });
     }
+    // TASK QUEUE — CREATE
+if (url.pathname === "/api/v1/tasks" && request.method === "POST") {
+  let body;
+
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({
+      status: "error",
+      error: "invalid_json"
+    }, { status: 400 });
+  }
+
+  if (!body.task_key || !body.task_type) {
+    return Response.json({
+      status: "error",
+      error: "task_key_and_task_type_required"
+    }, { status: 400 });
+  }
+
+  const agent = body.agent_key
+    ? await env.DB.prepare(`
+        SELECT id, agent_key, name
+        FROM agents
+        WHERE agent_key = ?
+          AND enabled = 1
+        LIMIT 1
+      `).bind(body.agent_key).first()
+    : null;
+
+  if (body.agent_key && !agent) {
+    return Response.json({
+      status: "error",
+      error: "agent_not_found_or_disabled"
+    }, { status: 404 });
+  }
+
+  const existing = await env.DB.prepare(`
+    SELECT id, task_key, status
+    FROM tasks
+    WHERE task_key = ?
+    LIMIT 1
+  `).bind(body.task_key).first();
+
+  if (existing) {
+    return Response.json({
+      status: "existing",
+      task: existing
+    });
+  }
+
+  const result = await env.DB.prepare(`
+    INSERT INTO tasks (
+      task_key,
+      agent_id,
+      task_type,
+      priority,
+      status,
+      input_json,
+      max_attempts
+    )
+    VALUES (?, ?, ?, ?, 'queued', ?, ?)
+  `).bind(
+    body.task_key,
+    agent ? agent.id : null,
+    body.task_type,
+    Number.isInteger(body.priority) ? body.priority : 100,
+    JSON.stringify(body.input || {}),
+    Number.isInteger(body.max_attempts) ? body.max_attempts : 3
+  ).run();
+
+  return Response.json({
+    status: "queued",
+    task_id: result.meta.last_row_id,
+    task_key: body.task_key,
+    agent: agent || null
+  }, { status: 201 });
+}
 
     return new Response("Not Found", { status: 404 });
   }
