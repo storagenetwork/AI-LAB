@@ -99,7 +99,63 @@ export default {
       });
     }
 
-    // TASK QUEUE — CREATE
+    // TEST TASK
+    if (
+      url.pathname === "/api/v1/tasks/test" &&
+      request.method === "GET"
+    ) {
+      const taskKey = `test-${Date.now()}`;
+
+      const agent = await env.DB.prepare(`
+        SELECT
+          id,
+          agent_key,
+          name
+        FROM agents
+        WHERE agent_key = 'ai_balance'
+          AND enabled = 1
+        LIMIT 1
+      `).first();
+
+      if (!agent) {
+        return Response.json({
+          status: "error",
+          error: "ai_balance_agent_not_available"
+        }, { status: 503 });
+      }
+
+      const result = await env.DB.prepare(`
+        INSERT INTO tasks (
+          task_key,
+          agent_id,
+          task_type,
+          priority,
+          status,
+          input_json,
+          max_attempts
+        )
+        VALUES (?, ?, ?, ?, 'queued', ?, ?)
+      `).bind(
+        taskKey,
+        agent.id,
+        "system_test",
+        10,
+        JSON.stringify({
+          message: "HO AI LAB task queue test",
+          test: true
+        }),
+        3
+      ).run();
+
+      return Response.json({
+        status: "queued",
+        task_id: result.meta.last_row_id,
+        task_key: taskKey,
+        agent: agent.agent_key
+      }, { status: 201 });
+    }
+
+    // TASK CREATE
     if (
       url.pathname === "/api/v1/tasks" &&
       request.method === "POST"
@@ -162,14 +218,10 @@ export default {
       }
 
       const priority =
-        Number.isInteger(body.priority)
-          ? body.priority
-          : 100;
+        Number.isInteger(body.priority) ? body.priority : 100;
 
       const maxAttempts =
-        Number.isInteger(body.max_attempts)
-          ? body.max_attempts
-          : 3;
+        Number.isInteger(body.max_attempts) ? body.max_attempts : 3;
 
       const inputJson =
         JSON.stringify(body.input || {});
@@ -202,7 +254,7 @@ export default {
       }, { status: 201 });
     }
 
-    // TASK QUEUE — LIST
+    // TASK LIST
     if (
       url.pathname === "/api/v1/tasks" &&
       request.method === "GET"
@@ -241,7 +293,6 @@ export default {
       });
     }
 
-    // NOT FOUND
     return new Response("Not Found", {
       status: 404
     });
