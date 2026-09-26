@@ -2,299 +2,151 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // HOME
+    // Home
     if (url.pathname === "/") {
       return Response.json({
-        service: "HO AI LAB",
-        status: "online"
+        status: "online",
+        project: "HO AI LAB"
       });
     }
 
-    // DATABASE HEALTH
+    // Database health
     if (url.pathname === "/db-health") {
-      const result = await env.DB
-        .prepare("SELECT 1 AS ok")
-        .first();
+      try {
+        const result = await env.DB
+          .prepare("SELECT 1 AS ok")
+          .first();
 
-      return Response.json({
-        status: "ok",
-        database: "connected",
-        result
-      });
-    }
-
-    // FREE-ONLY MODEL ROUTER
-    if (
-      url.pathname === "/api/v1/router/select" &&
-      request.method === "GET"
-    ) {
-      const rows = await env.DB.prepare(`
-        SELECT
-          p.id AS provider_id,
-          p.name AS provider,
-          p.type AS provider_type,
-          p.base_url,
-          m.id AS model_id,
-          m.name AS model,
-          q.status AS quota_status,
-          q.remaining_value,
-          p.priority AS provider_priority,
-          m.priority AS model_priority
-        FROM providers p
-        JOIN models m
-          ON m.provider_id = p.id
-        LEFT JOIN quotas q
-          ON q.provider_id = p.id
-         AND q.model_id = m.id
-        WHERE p.enabled = 1
-          AND m.enabled = 1
-          AND p.free_only = 1
-          AND m.free_only = 1
-          AND p.billing_allowed = 0
-        ORDER BY p.priority, m.priority
-      `).all();
-
-      const candidates = rows.results || [];
-
-      if (candidates.length === 0) {
         return Response.json({
-          status: "paused",
-          reason: "no_free_provider_available",
-          billing_used: false
-        }, { status: 503 });
+          status: "ok",
+          database: "connected",
+          result
+        });
+      } catch (error) {
+        return Response.json(
+          {
+            status: "error",
+            database: "failed",
+            error: error.message
+          },
+          { status: 500 }
+        );
       }
-
-      return Response.json({
-        status: "candidate_selected",
-        billing_used: false,
-        candidate: candidates[0],
-        candidates
-      });
     }
 
-    // AGENT MANAGER
-    if (
-      url.pathname === "/api/v1/agents" &&
-      request.method === "GET"
-    ) {
-      const result = await env.DB.prepare(`
-        SELECT
-          id,
-          agent_key,
-          name,
-          description,
-          agent_type,
-          enabled,
-          autonomous,
-          default_model_id,
-          config_json
-        FROM agents
-        WHERE enabled = 1
-        ORDER BY id
-      `).all();
-
-      return Response.json({
-        status: "ok",
-        agents: result.results || []
-      });
-    }
-
-    // TEST TASK
+    // Create test task
     if (
       url.pathname === "/api/v1/tasks/test" &&
       request.method === "GET"
     ) {
-      const taskKey = `test-${Date.now()}`;
-
-      const agent = await env.DB.prepare(`
-        SELECT
-          id,
-          agent_key,
-          name
-        FROM agents
-        WHERE agent_key = 'ai_balance'
-          AND enabled = 1
-        LIMIT 1
-      `).first();
-
-      if (!agent) {
-        return Response.json({
-          status: "error",
-          error: "ai_balance_agent_not_available"
-        }, { status: 503 });
-      }
-
-      const result = await env.DB.prepare(`
-        INSERT INTO tasks (
-          task_key,
-          agent_id,
-          task_type,
-          priority,
-          status,
-          input_json,
-          max_attempts
-        )
-        VALUES (?, ?, ?, ?, 'queued', ?, ?)
-      `).bind(
-        taskKey,
-        agent.id,
-        "system_test",
-        10,
-        JSON.stringify({
-          message: "HO AI LAB task queue test",
-          test: true
-        }),
-        3
-      ).run();
-
-      return Response.json({
-        status: "queued",
-        task_id: result.meta.last_row_id,
-        task_key: taskKey,
-        agent: agent.agent_key
-      }, { status: 201 });
-    }
-
-    // TASK CREATE
-    if (
-      url.pathname === "/api/v1/tasks" &&
-      request.method === "POST"
-    ) {
-      let body;
-
       try {
-        body = await request.json();
-      } catch {
-        return Response.json({
-          status: "error",
-          error: "invalid_json"
-        }, { status: 400 });
-      }
+        const taskKey = "test-" + Date.now();
 
-      if (!body.task_key || !body.task_type) {
-        return Response.json({
-          status: "error",
-          error: "task_key_and_task_type_required"
-        }, { status: 400 });
-      }
-
-      let agent = null;
-
-      if (body.agent_key) {
-        agent = await env.DB.prepare(`
-          SELECT
-            id,
-            agent_key,
-            name
-          FROM agents
-          WHERE agent_key = ?
-            AND enabled = 1
-          LIMIT 1
-        `).bind(body.agent_key).first();
+        const agent = await env.DB
+          .prepare(
+            "SELECT id, agent_key, name FROM agents WHERE agent_key = ? LIMIT 1"
+          )
+          .bind("ai_balance")
+          .first();
 
         if (!agent) {
-          return Response.json({
-            status: "error",
-            error: "agent_not_found_or_disabled"
-          }, { status: 404 });
+          return Response.json(
+            {
+              status: "error",
+              message: "ai_balance agent not found"
+            },
+            { status: 500 }
+          );
         }
-      }
 
-      const existing = await env.DB.prepare(`
-        SELECT
-          id,
-          task_key,
-          status
-        FROM tasks
-        WHERE task_key = ?
-        LIMIT 1
-      `).bind(body.task_key).first();
+        const result = await env.DB
+          .prepare(`
+            INSERT INTO tasks
+            (
+              task_key,
+              agent_id,
+              task_type,
+              priority,
+              status,
+              input_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+          `)
+          .bind(
+            taskKey,
+            agent.id,
+            "test",
+            10,
+            "queued",
+            JSON.stringify({
+              source: "test-endpoint",
+              message: "HO AI LAB test task"
+            })
+          )
+          .run();
 
-      if (existing) {
         return Response.json({
-          status: "existing",
-          task: existing
+          status: "queued",
+          task_id: result.meta.last_row_id,
+          task_key: taskKey,
+          agent: agent.agent_key
         });
+      } catch (error) {
+        return Response.json(
+          {
+            status: "error",
+            message: error.message
+          },
+          { status: 500 }
+        );
       }
-
-      const priority =
-        Number.isInteger(body.priority) ? body.priority : 100;
-
-      const maxAttempts =
-        Number.isInteger(body.max_attempts) ? body.max_attempts : 3;
-
-      const inputJson =
-        JSON.stringify(body.input || {});
-
-      const result = await env.DB.prepare(`
-        INSERT INTO tasks (
-          task_key,
-          agent_id,
-          task_type,
-          priority,
-          status,
-          input_json,
-          max_attempts
-        )
-        VALUES (?, ?, ?, ?, 'queued', ?, ?)
-      `).bind(
-        body.task_key,
-        agent ? agent.id : null,
-        body.task_type,
-        priority,
-        inputJson,
-        maxAttempts
-      ).run();
-
-      return Response.json({
-        status: "queued",
-        task_id: result.meta.last_row_id,
-        task_key: body.task_key,
-        agent: agent || null
-      }, { status: 201 });
     }
 
-    // TASK LIST
+    // List tasks
     if (
       url.pathname === "/api/v1/tasks" &&
       request.method === "GET"
     ) {
-      const result = await env.DB.prepare(`
-        SELECT
-          t.id,
-          t.task_key,
-          t.task_type,
-          t.priority,
-          t.status,
-          t.attempts,
-          t.max_attempts,
-          t.scheduled_at,
-          t.created_at,
-          a.agent_key,
-          a.name AS agent_name
-        FROM tasks t
-        LEFT JOIN agents a
-          ON a.id = t.agent_id
-        ORDER BY
-          CASE t.status
-            WHEN 'running' THEN 1
-            WHEN 'queued' THEN 2
-            WHEN 'paused' THEN 3
-            WHEN 'completed' THEN 4
-            ELSE 5
-          END,
-          t.priority,
-          t.id
-      `).all();
+      try {
+        const result = await env.DB
+          .prepare(`
+            SELECT
+              t.id,
+              t.task_key,
+              t.task_type,
+              t.priority,
+              t.status,
+              a.agent_key,
+              t.created_at
+            FROM tasks t
+            LEFT JOIN agents a
+              ON a.id = t.agent_id
+            ORDER BY t.id DESC
+            LIMIT 100
+          `)
+          .all();
 
-      return Response.json({
-        status: "ok",
-        tasks: result.results || []
-      });
+        return Response.json({
+          status: "ok",
+          tasks: result.results
+        });
+      } catch (error) {
+        return Response.json(
+          {
+            status: "error",
+            message: error.message
+          },
+          { status: 500 }
+        );
+      }
     }
 
-    return new Response("Not Found", {
-      status: 404
-    });
+    return Response.json(
+      {
+        status: "not_found",
+        path: url.pathname
+      },
+      { status: 404 }
+    );
   }
 };
