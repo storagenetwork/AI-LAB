@@ -21,6 +21,7 @@ export default {
       });
     }
 
+    // FREE-ONLY MODEL ROUTER
     if (url.pathname === "/api/v1/router/select") {
       const rows = await env.DB.prepare(`
         SELECT
@@ -63,6 +64,30 @@ export default {
         billing_used: false,
         candidate: candidates[0],
         candidates
+      });
+    }
+
+    // AGENT MANAGER
+    if (url.pathname === "/api/v1/agents") {
+      const result = await env.DB.prepare(`
+        SELECT
+          id,
+          agent_key,
+          name,
+          description,
+          agent_type,
+          enabled,
+          autonomous,
+          default_model_id,
+          config_json
+        FROM agents
+        WHERE enabled = 1
+        ORDER BY id
+      `).all();
+
+      return Response.json({
+        status: "ok",
+        agents: result.results || []
       });
     }
 
